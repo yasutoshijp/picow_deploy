@@ -1,0 +1,14 @@
+[Unit]
+Description=PicoW Code Deployment Server
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -m http.server 8080
+WorkingDirectory=/home/yasutoshi/projects/11.picow_deploy/files
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=yasutoshi
+
+[Install]
+WantedBy=multi-user.target

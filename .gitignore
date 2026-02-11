@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment files (optionally ignore if you only want the server structure)
+# files/*
+# !files/README.txt
