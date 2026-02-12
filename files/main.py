@@ -21,7 +21,7 @@ DEBUG_MODE = True    # True: 詳細ログ表示 / False: 重要なイベント�
 # 省電力（バッテリーモード）設定
 # =========================================================
 BATTERY_MODE = True  # True: モバイルバッテリー運用向け省電力モード
-BATTERY_CPU_FREQ = 48_000_000   # バッテリーモード時CPU周波数 (48MHz, 通常125MHz)
+BATTERY_CPU_FREQ = 80_000_000   # バッテリーモード時CPU周波数 (80MHz, CYW43最低要件)
 # Wi-Fiパワーセーブモード: ラジオをアイドル時に間欠動作させる（接続は維持）
 # CYW43_PM_AGGRESSIVE = 0xa11142 : 積極的な省電力（ビーコン間隔でスリープ）
 WIFI_PM_POWERSAVE = 0xa11142
@@ -343,15 +343,15 @@ def main():
     global last_update_check, DEBUG_MODE
     print("Starting Mode:", MODE, "(DEBUG:{}, BATTERY:{})".format(DEBUG_MODE, BATTERY_MODE))
 
-    # --- バッテリーモード: CPU周波数低減 ---
+    # --- 起動時: Wi-Fi接続 → OTA確認（フルクロックで実行） ---
+    wlan = wifi_connect()
+
+    # --- バッテリーモード: Wi-Fi接続後にCPU周波数低減 ---
     if BATTERY_MODE:
         machine.freq(BATTERY_CPU_FREQ)
         print("[POWER] CPU freq: {}MHz".format(machine.freq() // 1_000_000))
         # バッテリーモード時はデバッグ出力を抑制
         DEBUG_MODE = False
-
-    # --- 起動時: Wi-Fi接続 → OTA確認 ---
-    wlan = wifi_connect()
     check_and_update()
     last_update_check = time.time()
 
