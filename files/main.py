@@ -18,6 +18,13 @@ MODE = "pi3"         # "pi3" または "alexa"
 DEBUG_MODE = True    # True: 詳細ログ表示 / False: 重要なイベントのみ
 
 # =========================================================
+# 省電力（バッテリーモード）設定
+# =========================================================
+BATTERY_MODE = True  # True: モバイルバッテリー運用向け省電力モード
+BATTERY_CPU_FREQ = 48_000_000   # バッテリーモード時CPU周波数 (48MHz, 通常125MHz)
+BATTERY_LOOP_SLEEP_MS = 250     # バッテリーモード時ループ周期
+
+# =========================================================
 # アップデート設定（version.json 管理方式）
 # =========================================================
 UPDATE_HOSTS = [
@@ -134,6 +141,16 @@ def wifi_connect(timeout_sec=20):
         except Exception as e:
             if DEBUG_MODE: print("   connect error:", ssid, repr(e))
     raise RuntimeError("WiFi connect failed")
+
+def wifi_disconnect():
+    """Wi-Fiを切断しラジオをOFFにして消費電力を削減する"""
+    wlan = network.WLAN(network.STA_IF)
+    try:
+        wlan.disconnect()
+    except:
+        pass
+    wlan.active(False)
+    if DEBUG_MODE: print("[WiFi] Radio OFF")
 
 def start_webrepl_if_enabled():
     _, enable_webrepl, _ = load_secrets()
@@ -297,6 +314,16 @@ def try_send_pending():
     if (now - last_send_try) < PI3_SEND_INTERVAL_SEC: return
     last_send_try = now
     d = pending_dir
+
+    # バッテリーモード: 送信前にWi-FiをON
+    if BATTERY_MODE:
+        try:
+            wifi_connect(timeout_sec=10)
+        except Exception as e:
+            print("[SEND_ERR] WiFi reconnect failed:", e)
+            if (now - pending_at) > 10.0: pending_dir = None
+            return
+
     try:
         if MODE == "pi3":
             st, body = pi3_send(d)
@@ -307,41 +334,73 @@ def try_send_pending():
         pending_dir = None
     except Exception as e:
         print("[SEND_ERR]", e)
-        if (now - pending_at) > 3.0: pending_dir = None
+        if (now - pending_at) > 10.0: pending_dir = None
+    finally:
+        # バッテリーモード: 送信後にWi-FiをOFF
+        if BATTERY_MODE:
+            wifi_disconnect()
 
 
 # --------------------------
 # Main Loop
 # --------------------------
 def main():
-    global last_update_check
-    print("Starting Mode:", MODE, "(DEBUG:{})".format(DEBUG_MODE))
+    global last_update_check, DEBUG_MODE
+    print("Starting Mode:", MODE, "(DEBUG:{}, BATTERY:{})".format(DEBUG_MODE, BATTERY_MODE))
 
+    # --- バッテリーモード: CPU周波数低減 ---
+    if BATTERY_MODE:
+        machine.freq(BATTERY_CPU_FREQ)
+        print("[POWER] CPU freq: {}MHz".format(machine.freq() // 1_000_000))
+        # バッテリーモード時はデバッグ出力を抑制
+        DEBUG_MODE = False
+
+    # --- 起動時: Wi-Fi接続 → OTA確認 → 切断 ---
     wlan = wifi_connect()
     check_and_update()
     last_update_check = time.time()
-    start_webrepl_if_enabled()
+
+    if BATTERY_MODE:
+        # バッテリーモード: WebREPL不要、Wi-FiをOFFにする
+        wifi_disconnect()
+        print("[POWER] WiFi OFF (battery mode)")
+    else:
+        start_webrepl_if_enabled()
+
     init_qmc()
 
     last_fired_dir, last_fired_at, armed = None, 0.0, True
     deg_smoothed, stable_dir, stable_count, last_print_ms = None, None, 0, 0
+    loop_sleep = BATTERY_LOOP_SLEEP_MS if BATTERY_MODE else LOOP_SLEEP_MS
 
-    print("Main Loop Started.")
+    print("Main Loop Started. (sleep:{}ms)".format(loop_sleep))
 
     while True:
         try:
             now = time.time()
+
+            # --- 定期OTAチェック ---
             if (now - last_update_check) > UPDATE_INTERVAL_SEC:
-                check_and_update()
+                if BATTERY_MODE:
+                    # バッテリーモード: OTAチェック時のみWi-Fi ON/OFF
+                    try:
+                        wifi_connect(timeout_sec=10)
+                        check_and_update()
+                    except Exception as e:
+                        print("[OTA] WiFi failed:", e)
+                    finally:
+                        wifi_disconnect()
+                else:
+                    check_and_update()
                 last_update_check = now
 
             # 生データを取得
             x_raw, y_raw, z_raw = read_xyz_stable()
-            
+
             # --- 鉄部補正適用 ---
             x = x_raw - X_OFFSET
             y = y_raw - Y_OFFSET
-            
+
             # 補正後のx, yで角度を計算
             deg_raw = (deg_from_xy(x, y) - NORTH_DEG_RAW + 360.0) % 360.0
             deg_smoothed = ema_angle(deg_smoothed, deg_raw, EMA_ALPHA)
@@ -379,7 +438,11 @@ def main():
             print("LOOP ERR:", e)
             time.sleep(0.1)
 
-        time.sleep_ms(LOOP_SLEEP_MS)
+        # --- 省電力スリープ ---
+        if BATTERY_MODE:
+            machine.lightsleep(loop_sleep)
+        else:
+            time.sleep_ms(loop_sleep)
 
 if __name__ == "__main__":
     main()
