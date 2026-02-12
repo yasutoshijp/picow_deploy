@@ -18,6 +18,15 @@ MODE = "pi3"         # "pi3" または "alexa"
 DEBUG_MODE = True    # True: 詳細ログ表示 / False: 重要なイベントのみ
 
 # =========================================================
+# 省電力（バッテリーモード）設定
+# =========================================================
+BATTERY_MODE = True  # True: モバイルバッテリー運用向け省電力モード
+BATTERY_CPU_FREQ = 48_000_000   # バッテリーモード時CPU周波数 (48MHz, 通常125MHz)
+# Wi-Fiパワーセーブモード: ラジオをアイドル時に間欠動作させる（接続は維持）
+# CYW43_PM_AGGRESSIVE = 0xa11142 : 積極的な省電力（ビーコン間隔でスリープ）
+WIFI_PM_POWERSAVE = 0xa11142
+
+# =========================================================
 # アップデート設定（version.json 管理方式）
 # =========================================================
 UPDATE_HOSTS = [
@@ -130,10 +139,27 @@ def wifi_connect(timeout_sec=20):
                 time.sleep(0.5)
             if wlan.isconnected():
                 print("Connected. IP:", wlan.ifconfig()[0])
+                # バッテリーモード: Wi-Fiパワーセーブ有効化
+                if BATTERY_MODE:
+                    try:
+                        wlan.config(pm=WIFI_PM_POWERSAVE)
+                        print("[POWER] WiFi power-save enabled")
+                    except Exception as e:
+                        print("[POWER] WiFi PM set failed:", e)
                 return wlan
         except Exception as e:
             if DEBUG_MODE: print("   connect error:", ssid, repr(e))
     raise RuntimeError("WiFi connect failed")
+
+def wifi_disconnect():
+    """Wi-Fiを切断しラジオをOFFにして消費電力を削減する"""
+    wlan = network.WLAN(network.STA_IF)
+    try:
+        wlan.disconnect()
+    except:
+        pass
+    wlan.active(False)
+    if DEBUG_MODE: print("[WiFi] Radio OFF")
 
 def start_webrepl_if_enabled():
     _, enable_webrepl, _ = load_secrets()
@@ -314,13 +340,27 @@ def try_send_pending():
 # Main Loop
 # --------------------------
 def main():
-    global last_update_check
-    print("Starting Mode:", MODE, "(DEBUG:{})".format(DEBUG_MODE))
+    global last_update_check, DEBUG_MODE
+    print("Starting Mode:", MODE, "(DEBUG:{}, BATTERY:{})".format(DEBUG_MODE, BATTERY_MODE))
 
+    # --- バッテリーモード: CPU周波数低減 ---
+    if BATTERY_MODE:
+        machine.freq(BATTERY_CPU_FREQ)
+        print("[POWER] CPU freq: {}MHz".format(machine.freq() // 1_000_000))
+        # バッテリーモード時はデバッグ出力を抑制
+        DEBUG_MODE = False
+
+    # --- 起動時: Wi-Fi接続 → OTA確認 ---
     wlan = wifi_connect()
     check_and_update()
     last_update_check = time.time()
-    start_webrepl_if_enabled()
+
+    if BATTERY_MODE:
+        # バッテリーモード: WebREPL不要（メモリ・CPU節約）
+        print("[POWER] WebREPL skipped (battery mode)")
+    else:
+        start_webrepl_if_enabled()
+
     init_qmc()
 
     last_fired_dir, last_fired_at, armed = None, 0.0, True
@@ -331,17 +371,18 @@ def main():
     while True:
         try:
             now = time.time()
+
             if (now - last_update_check) > UPDATE_INTERVAL_SEC:
                 check_and_update()
                 last_update_check = now
 
             # 生データを取得
             x_raw, y_raw, z_raw = read_xyz_stable()
-            
+
             # --- 鉄部補正適用 ---
             x = x_raw - X_OFFSET
             y = y_raw - Y_OFFSET
-            
+
             # 補正後のx, yで角度を計算
             deg_raw = (deg_from_xy(x, y) - NORTH_DEG_RAW + 360.0) % 360.0
             deg_smoothed = ema_angle(deg_smoothed, deg_raw, EMA_ALPHA)
