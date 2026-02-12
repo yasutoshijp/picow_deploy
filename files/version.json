@@ -1,0 +1,4 @@
+{
+    "version": "3",
+    "files": ["main.py", "secrets.py", "README.txt"]
+}
