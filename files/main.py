@@ -365,12 +365,25 @@ def main():
 
     last_fired_dir, last_fired_at, armed = None, 0.0, True
     deg_smoothed, stable_dir, stable_count, last_print_ms = None, None, 0, 0
+    wifi_check_interval = 10  # Wi-Fi死活監視の間隔(秒)
+    last_wifi_check = time.time()
 
     print("Main Loop Started.")
 
     while True:
         try:
             now = time.time()
+
+            # --- Wi-Fi死活監視: 切れていたら自動再接続 ---
+            if (now - last_wifi_check) >= wifi_check_interval:
+                last_wifi_check = now
+                wl = network.WLAN(network.STA_IF)
+                if not wl.isconnected():
+                    print("[WiFi] Lost! Reconnecting...")
+                    try:
+                        wifi_connect(timeout_sec=10)
+                    except Exception as e:
+                        print("[WiFi] Reconnect failed:", e)
 
             if (now - last_update_check) > UPDATE_INTERVAL_SEC:
                 check_and_update()
