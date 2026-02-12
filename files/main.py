@@ -22,7 +22,9 @@ DEBUG_MODE = True    # True: 詳細ログ表示 / False: 重要なイベント�
 # =========================================================
 BATTERY_MODE = True  # True: モバイルバッテリー運用向け省電力モード
 BATTERY_CPU_FREQ = 48_000_000   # バッテリーモード時CPU周波数 (48MHz, 通常125MHz)
-BATTERY_LOOP_SLEEP_MS = 250     # バッテリーモード時ループ周期
+# Wi-Fiパワーセーブモード: ラジオをアイドル時に間欠動作させる（接続は維持）
+# CYW43_PM_AGGRESSIVE = 0xa11142 : 積極的な省電力（ビーコン間隔でスリープ）
+WIFI_PM_POWERSAVE = 0xa11142
 
 # =========================================================
 # アップデート設定（version.json 管理方式）
@@ -137,6 +139,13 @@ def wifi_connect(timeout_sec=20):
                 time.sleep(0.5)
             if wlan.isconnected():
                 print("Connected. IP:", wlan.ifconfig()[0])
+                # バッテリーモード: Wi-Fiパワーセーブ有効化
+                if BATTERY_MODE:
+                    try:
+                        wlan.config(pm=WIFI_PM_POWERSAVE)
+                        print("[POWER] WiFi power-save enabled")
+                    except Exception as e:
+                        print("[POWER] WiFi PM set failed:", e)
                 return wlan
         except Exception as e:
             if DEBUG_MODE: print("   connect error:", ssid, repr(e))
@@ -314,16 +323,6 @@ def try_send_pending():
     if (now - last_send_try) < PI3_SEND_INTERVAL_SEC: return
     last_send_try = now
     d = pending_dir
-
-    # バッテリーモード: 送信前にWi-FiをON
-    if BATTERY_MODE:
-        try:
-            wifi_connect(timeout_sec=10)
-        except Exception as e:
-            print("[SEND_ERR] WiFi reconnect failed:", e)
-            if (now - pending_at) > 10.0: pending_dir = None
-            return
-
     try:
         if MODE == "pi3":
             st, body = pi3_send(d)
@@ -334,11 +333,7 @@ def try_send_pending():
         pending_dir = None
     except Exception as e:
         print("[SEND_ERR]", e)
-        if (now - pending_at) > 10.0: pending_dir = None
-    finally:
-        # バッテリーモード: 送信後にWi-FiをOFF
-        if BATTERY_MODE:
-            wifi_disconnect()
+        if (now - pending_at) > 3.0: pending_dir = None
 
 
 # --------------------------
@@ -355,15 +350,14 @@ def main():
         # バッテリーモード時はデバッグ出力を抑制
         DEBUG_MODE = False
 
-    # --- 起動時: Wi-Fi接続 → OTA確認 → 切断 ---
+    # --- 起動時: Wi-Fi接続 → OTA確認 ---
     wlan = wifi_connect()
     check_and_update()
     last_update_check = time.time()
 
     if BATTERY_MODE:
-        # バッテリーモード: WebREPL不要、Wi-FiをOFFにする
-        wifi_disconnect()
-        print("[POWER] WiFi OFF (battery mode)")
+        # バッテリーモード: WebREPL不要（メモリ・CPU節約）
+        print("[POWER] WebREPL skipped (battery mode)")
     else:
         start_webrepl_if_enabled()
 
@@ -371,27 +365,15 @@ def main():
 
     last_fired_dir, last_fired_at, armed = None, 0.0, True
     deg_smoothed, stable_dir, stable_count, last_print_ms = None, None, 0, 0
-    loop_sleep = BATTERY_LOOP_SLEEP_MS if BATTERY_MODE else LOOP_SLEEP_MS
 
-    print("Main Loop Started. (sleep:{}ms)".format(loop_sleep))
+    print("Main Loop Started.")
 
     while True:
         try:
             now = time.time()
 
-            # --- 定期OTAチェック ---
             if (now - last_update_check) > UPDATE_INTERVAL_SEC:
-                if BATTERY_MODE:
-                    # バッテリーモード: OTAチェック時のみWi-Fi ON/OFF
-                    try:
-                        wifi_connect(timeout_sec=10)
-                        check_and_update()
-                    except Exception as e:
-                        print("[OTA] WiFi failed:", e)
-                    finally:
-                        wifi_disconnect()
-                else:
-                    check_and_update()
+                check_and_update()
                 last_update_check = now
 
             # 生データを取得
@@ -438,11 +420,7 @@ def main():
             print("LOOP ERR:", e)
             time.sleep(0.1)
 
-        # --- 省電力スリープ ---
-        if BATTERY_MODE:
-            machine.lightsleep(loop_sleep)
-        else:
-            time.sleep_ms(loop_sleep)
+        time.sleep_ms(LOOP_SLEEP_MS)
 
 if __name__ == "__main__":
     main()
