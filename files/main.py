@@ -32,6 +32,7 @@ WIFI_PM_POWERSAVE = 0xa11142
 UPDATE_HOSTS = [
     "http://192.168.4.118:8080",
     "http://raspberrypi3modelB.local:8080",
+    "http://raspberrypi5-2.local:8080",
     "http://192.168.0.116:8080",
     "http://192.168.0.196:8080",
     
@@ -437,4 +438,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
