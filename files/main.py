@@ -228,7 +228,7 @@ def sinric_contact_event(device_id: str, state: str):
     payload = {"type": "event", "action": "setContactState", "value": ujson.dumps({"state": state})}
     r = None
     try:
-        r = requests.post(url, headers=headers, json=payload)
+        r = requests.post(url, headers=headers, json=payload, timeout=5)
         return getattr(r, "status_code", None), r.text
     finally:
         if r: r.close()
@@ -237,7 +237,7 @@ def pi3_send(direction: str):
     payload = {"dir": direction}
     r = None
     try:
-        r = requests.post(PI3_URL, headers={"Content-Type": "application/json"}, json=payload)
+        r = requests.post(PI3_URL, headers={"Content-Type": "application/json"}, json=payload, timeout=5)
         return getattr(r, "status_code", None), r.text
     finally:
         if r: r.close()
@@ -326,10 +326,10 @@ def try_send_pending():
     try:
         if MODE == "pi3":
             st, body = pi3_send(d)
-            if DEBUG_MODE: print("[PI3] Result:", st)
+            print("[SENT]", d, st)
         else:
             st, body = sinric_contact_event(DEVICE_IDS[d], "open")
-            if DEBUG_MODE: print("[SINRIC] Result:", st)
+            print("[SENT]", d, st)
         pending_dir = None
     except Exception as e:
         print("[SEND_ERR]", e)
