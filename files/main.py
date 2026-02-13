@@ -333,7 +333,7 @@ def try_send_pending():
         pending_dir = None
     except Exception as e:
         print("[SEND_ERR]", e)
-        if (now - pending_at) > 3.0: pending_dir = None
+        if (time.time() - pending_at) > 3.0: pending_dir = None
 
 
 # --------------------------
@@ -437,3 +437,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
