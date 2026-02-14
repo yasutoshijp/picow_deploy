@@ -14,13 +14,13 @@ except ImportError:
 # =========================================================
 # 動作モード・デバッグ設定
 # =========================================================
-MODE = "pi3"         # "pi3" または "alexa"
+MODE = "alexa"         # "pi3" または "alexa"
 DEBUG_MODE = True    # True: 詳細ログ表示 / False: 重要なイベントのみ
 
 # =========================================================
 # 省電力（バッテリーモード）設定
 # =========================================================
-BATTERY_MODE = True  # True: モバイルバッテリー運用向け省電力モード
+BATTERY_MODE = False  # True: モバイルバッテリー運用向け省電力モード
 BATTERY_CPU_FREQ = 80_000_000   # バッテリーモード時CPU周波数 (80MHz, CYW43最低要件)
 # Wi-Fiパワーセーブモード: ラジオをアイドル時に間欠動作させる（接続は維持）
 # CYW43_PM_AGGRESSIVE = 0xa11142 : 積極的な省電力（ビーコン間隔でスリープ）
@@ -32,7 +32,6 @@ WIFI_PM_POWERSAVE = 0xa11142
 UPDATE_HOSTS = [
     "http://192.168.4.118:8080",
     "http://raspberrypi3modelB.local:8080",
-    "http://raspberrypi5-2.local:8080",
     "http://192.168.0.116:8080",
     "http://192.168.0.196:8080",
     
@@ -75,13 +74,18 @@ DRDY_WAIT_MS = 250
 DRDY_POLL_MS = 5
 
 # --- キャリブレーション（椅子の鉄部補正） ---
-X_OFFSET = 798.0
-Y_OFFSET = 270.5
+#X_OFFSET = 798.0
+#Y_OFFSET = 270.5
 #X_OFFSET = 838.5
 #Y_OFFSET = -1401.5
+#X_OFFSET = -580.0
+#Y_OFFSET = -337.0
+#実家
+X_OFFSET = -456.5
+Y_OFFSET = -532.5
 
 # 実家の北オフセット（※中心補正によりズレる可能性があるため、動作後に要微調整）
-NORTH_DEG_RAW = 151
+NORTH_DEG_RAW = 43.0
 
 # 判定パラメータ
 TARGETS = [("north", 0.0), ("east", 90.0), ("south", 180.0), ("west", 270.0)]
